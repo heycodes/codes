@@ -1,0 +1,110 @@
+rsync安装
+rysnc的官方网站：http://rsync.samba.org/可以从上面得到最新的版本。目前最新版是3.05。https://download.samba.org/pub/rsync/src/rsync-3.1.2.tar.gz
+
+1、软件包安装
+# sudo apt-get  install  rsync  注：在debian、ubuntu 等在线安装方法；
+# yum install rsync    注：Fedora、Redhat 等在线安装方法；
+# rpm -ivh rsync       注：Fedora、Redhat 等rpm包安装方法；
+2、源码包安装
+wget https://download.samba.org/pub/rsync/src/rsync-3.1.2.tar.gz
+tar xvf rsync-3.1.2.tar.gz
+cd rsync-3.1.2
+./configure --prefix=/usr  ;make ;make install   注：在用源码包编译安装之前，您得安装gcc等编译开具才行
+
+真正的无密码登录ssh备份
+
+两台主机：A[backup]：192.168.128.130  B[源]：192.168.128.132
+A、B 两台主机必须全部安装rsync，一般系统自带，若没有需要自己手动安装一下
+若A不用密钥登录B，那么A生成密钥(反之B生成密钥)
+ ssh -keygen rsa 
+Generating public/private rsa key pair. #提示正在生成rsa密钥对
+Enter file in which to save the key (/root/.ssh/id_dsa): #询问公钥和私钥存放的位置，回车用默认位置即可
+Enter passphrase (empty for no passphrase): #询问输入私钥密语，输入密语
+Enter same passphrase again: #再次提示输入密语确认
+Your identification has been saved in /root/.ssh/id_dsa. #提示公钥和私钥已经存放在/root/.ssh/目录下
+Your public key has been saved in /root/.ssh/id_dsa.pub.
+The key fingerprint is:
+x6:68:xx:93:98:8x:87:95:7x:2x:4x:x9:81:xx:56:94 root@server #提示key的指纹
+
+生成后，将id_rsa.pub拷贝到要备份的服务器目录下
+B：手动创建.ssh目录 mkdir  .ssh 是隐藏的 要用 ls -a 查看
+scp  /root/.ssh/id_rsa.pub  root@192.168.128.130:/root/.ssh/authorized_keys
+chmod   700 .ssh   改变权限 这个目录   只有普通用户有权限
+chmod 600    .ssh/authorized_keys  权限必须是600 读写权限 
+
+验证ssh登录[源]服务器
+ssh 192.168.128.130
+提示如下说明登录成功：
+[root@localhost ~]# ssh 192.168.128.130
+Last login: Tue Dec 13 18:10:31 2016 from 192.168.128.132
+这样我们备份[源]服务器的数据时就不用输入密码就可以把数据备份本地，反之相同。
+
+两种同步方式:
+方式一
+rsync  -aSvH  -e  'ssh  -p  22000'  --exclude=upload  --delete  /root/ntopng/*  root@192.168.187.180:/root/ntopng1/
+方式二
+rsync  -aSvH  --delete  root@192.168.187.180:/home/*  /home/
+
+ssh登录备份:
+rsync  -aSH  -e  'ssh  -p  22000'  --delete  --exclude-from=/home/webrsync/exclude.list  root@192.168.128.130:/www/web/  /home/webrsync/;
+echo  ["$(date  +%Y-%m-%d_%H:%M:%S)"]web backup successful >>  rsync.txt;
+
+rsync有六种不同的工作模式：
+1. 拷贝本地文件；当SRC和DES路径信息都不包含有单个冒号":"分隔符时就启动这种工作模式。
+2.使用一个远程shell程序（如rsh、ssh）来实现将本地机器的内容拷贝到远程机器。当DST路径地址包含单个冒号":"分隔符时启动该模式。
+3.使用一个远程shell程序（如rsh、ssh）来实现将远程机器的内容拷贝到本地机器。当SRC地址路径包含单个冒号":"分隔符时启动该模式。
+4. 从远程rsync服务器中拷贝文件到本地机。当SRC路径信息包含"::"分隔符时启动该模式。
+5. 从本地机器拷贝文件到远程rsync服务器中。当DST路径信息包含"::"分隔符时启动该模式。
+6. 列远程机的文件列表。这类似于rsync传输，不过只要在命令中省略掉本地机信息即可。
+-a 以archive模式操作、复制目录、符号连接 相当于-rlptgoD
+
+rsync中的参数：
+-a  保持文件属性
+-r   子目录递归处理
+-H 保持文件硬链接
+-P 传输进度；
+-z  备份文件传输时候压缩处理
+-l 是链接文件，意思是拷贝链接文件；-p 表示保持文件原有权限；-t 保持文件原有时间；-g 保持文件原有用户组；-o 保持文件原有属主；-D 相当于块设备文件；
+-v 传输时的进度等信息，和-P有点关系，自己试试。可以看文档；
+-u只进行更新，防止本地新文件被重写，注意两者机器的时钟的同时
+--progress是指显示出详细的进度情况
+--delete是指如果服务器端删除了这一文件，那么客户端也相应把文件删除，保持真正的一致
+--password-file=/password/path/file来指定密码文件，这样就可以在脚本中使用而无需交互式地输入验证密码了，这里需要注意的是这份密码文件权限属性要设得只有属主可读。
+-e ssh  使用ssh加密隧道传输
+--exclude-from 不备份目录下的文件
+
+设置定时器进行自动备份
+将传输命令写入.sh脚本即：
+rsync -aSH -e ssh --delete root@192.168.128.130:/www/web/ /home/webrsync/;
+echo ["$(date  +%Y-%m-%d_%H:%M:%S)"]web backup successful >> /home/webrsync/rsync.txt;
+cron服务:
+查看cron状态
+  service crond status　
+开启cron
+ service crond start
+关闭cron
+ service crond stop
+重启cron
+ service crond restart
+ 重新加载配置文件
+ service crond reload
+ crontab用法：
+crontab –e : 修改 crontab 文件，如果文件不存在会自动创建。 
+crontab –l : 显示 crontab 文件。 
+crontab -r : 删除 crontab 文件。
+crontab -ir : 删除 crontab 文件前提醒用户。
+在crontab文件中写入需要执行的命令和时间，该文件中每行都包括六个域，其中前五个域是指定命令被执行的时间，最后一个域是要被执行的命令。每个域之间使用空格或者制表符分隔。格式如下： 
+
+minute hour day-of-month month-of-year day-of-week commands 
+合法值为：00-59 00-23 01-31 01-12 0-6 (0 is sunday)
+除了数字还有几个特殊的符号："*"、"/"和"-"、","
+
+*代表所有的取值范围内的数字
+"/"代表每的意思,"/5"表示每5个单位
+"-"代表从某个数字到某个数字
+","分开几个离散的数字
+注：commands 注意以下几点
+要是存在文件，要写绝对路径
+即使是打印也不会显示在显示屏，在后台运行，最好重定向日志
+
+*/1 * * * * /root/rsync.sh
